@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="ResilientCheckout.Application/ResilientCheckout.Application.csproj" />
+  <Project Path="ResilientCheckout.Domain/ResilientCheckout.Domain.csproj" />
+  <Project Path="ResilientCheckout.Infraestructure/ResilientCheckout.Infraestructure.csproj" />
+  <Project Path="ResilientCheckout/ResilientCheckout.Api.csproj" />
+</Solution>
