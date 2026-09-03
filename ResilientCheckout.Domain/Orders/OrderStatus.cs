@@ -4,7 +4,7 @@ using System.Text;
 
 namespace ResilientCheckout.Domain.Orders
 {
-    internal enum OrderStatus
+    public enum OrderStatus
     {
         New,
         Processing,

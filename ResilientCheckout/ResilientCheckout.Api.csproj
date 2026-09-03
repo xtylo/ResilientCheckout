@@ -6,4 +6,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.17.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ResilientCheckout.Application\ResilientCheckout.Application.csproj" />
+    <ProjectReference Include="..\ResilientCheckout.Domain\ResilientCheckout.Domain.csproj" />
+    <ProjectReference Include="..\ResilientCheckout.Infraestructure\ResilientCheckout.Infraestructure.csproj" />
+  </ItemGroup>
+
 </Project>

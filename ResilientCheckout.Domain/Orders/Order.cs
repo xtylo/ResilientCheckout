@@ -4,7 +4,7 @@ using System.Text;
 
 namespace ResilientCheckout.Domain.Orders
 {
-    internal class Order : BaseEntity
+    public class Order : BaseEntity
     {
         public string Name { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
