@@ -10,8 +10,4 @@
     <Folder Include="Notifications\" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\ResilientCheckout.Application\ResilientCheckout.Application.csproj" />
-  </ItemGroup>
-
 </Project>
