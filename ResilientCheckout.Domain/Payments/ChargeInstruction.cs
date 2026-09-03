@@ -4,8 +4,8 @@ using System.Text;
 
 namespace ResilientCheckout.Domain.Payments
 {
-    public interface IPaymentProvider
+    public class ChargeInstruction
     {
-        Task<PaymentResult> ChargeAsync(ChargeInstruction chargeInstruction);
+        public int OrderId { get; set; }
     }
 }

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using ResilientCheckout.Domain.Payments;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -13,5 +14,9 @@ namespace ResilientCheckout.Application.Commands
         public string ExpirationDate { get; set; } = string.Empty;
         public int SecurityCode { get; set; }
 
+        public ChargeInstruction ToChargeInstruction() => new()
+        {
+            OrderId = OrderId
+        };
     }
 }
