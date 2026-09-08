@@ -1,5 +1,6 @@
 ﻿
 using Microsoft.AspNetCore.Mvc;
+using Polly.CircuitBreaker;
 using ResilientCheckout.Application.Abstractions;
 using ResilientCheckout.Application.Commands;
 using ResilientCheckout.Application.Idempotency;
@@ -36,7 +37,26 @@ namespace ResilientCheckout.Api.Controllers
             if (!reserved)
                 return Conflict("This charge has already been processed or is in progress.");
 
-            var result = await paymentProvider.ChargeAsync(command.ToChargeInstruction());
+            PaymentResult result;
+            try
+            {
+                result = await paymentProvider.ChargeAsync(command.ToChargeInstruction());
+            }
+            catch (BrokenCircuitException)
+            {
+                // El circuito está abierto: la operación nunca llegó a intentarse de verdad.
+                // Libera la key para que el cliente pueda reintentar con el mismo Idempotency-Key.
+                await idempotencyStore.ReleaseAsync(idempotencyKey);
+                return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                    "El servicio de pagos no está disponible en este momento. Intenta de nuevo más tarde.");
+            }
+            catch (PaymentProviderUnavailableException)
+            {
+                // Se agotaron los reintentos: tampoco se completó la operación.
+                await idempotencyStore.ReleaseAsync(idempotencyKey);
+                return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                    "No se pudo procesar el cobro tras varios intentos. Intenta de nuevo más tarde.");
+            }
 
             if (!result.Succeed)
                 return BadRequest(result);

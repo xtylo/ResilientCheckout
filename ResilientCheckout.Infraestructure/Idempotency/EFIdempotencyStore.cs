@@ -37,5 +37,17 @@ namespace ResilientCheckout.Infraestructure.Idempotency
                 return false;
             }
         }
+
+        public async Task ReleaseAsync(string key, CancellationToken cancellationToken = default)
+        {
+            var record = await _appDbContext.IdempotencyRecords
+                .FirstOrDefaultAsync(ir => ir.Key == key, cancellationToken);
+
+            if (record is null)
+                return;
+
+            _appDbContext.IdempotencyRecords.Remove(record);
+            await _appDbContext.SaveChangesAsync(cancellationToken);
+        }
     }
 }
