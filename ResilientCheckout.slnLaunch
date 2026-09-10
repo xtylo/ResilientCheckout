@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "Api+Notifications(Debug)",
+    "Projects": [
+      {
+        "Path": "ResilientCheckout.Notifications\\ResilientCheckout.Notifications.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "ResilientCheckout\\ResilientCheckout.Api.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

@@ -1,0 +1,33 @@
+name: resilientcheckout-servicebus
+
+networks:
+  sb-emulator:
+
+services:
+  asb-sql:
+    container_name: "resilientcheckout-asb-sql"
+    image: "mcr.microsoft.com/azure-sql-edge:latest"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "ResilientCheckout_Sb2026!"
+    networks:
+      sb-emulator:
+
+  asb-emulator:
+    container_name: "resilientcheckout-servicebus-emulator"
+    image: "mcr.microsoft.com/azure-messaging/servicebus-emulator:latest"
+    pull_policy: always
+    volumes:
+      - "./servicebus-emulator/Config.json:/ServiceBus_Emulator/ConfigFiles/Config.json"
+    ports:
+      - "5672:5672"   # AMQP - lo que usa tu app para publicar/consumir mensajes
+      - "5300:5300"   # HTTP - management / health-check del emulador
+    environment:
+      SQL_SERVER: asb-sql
+      MSSQL_SA_PASSWORD: "ResilientCheckout_Sb2026!"
+      ACCEPT_EULA: "Y"
+      EMULATOR_HTTP_PORT: "5300"
+    depends_on:
+      - asb-sql
+    networks:
+      sb-emulator:
