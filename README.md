@@ -29,8 +29,10 @@ flowchart LR
     end
 
     subgraph INFRA["Infraestructura"]
+        Sel["PaymentProviderSelection\n(Singleton)"]
         RPP["ResilientPaymentProvider\n(Polly: retry + circuit breaker)"]
         SFP["StripeFakeProvider"]
+        PFP["PaypalFakeProvider"]
         EFI["EFIdempotencyStore"]
         EFO["EFOutboxWritter"]
         Relay["ServiceBusOutboxRelay\n(BackgroundService, polling 3s)"]
@@ -50,7 +52,10 @@ flowchart LR
         Push["PushChannel"]
     end
 
-    CC --> IPP --> RPP --> SFP
+    CC --> IPP --> RPP
+    Sel -.->|elige cuál envolver| RPP
+    RPP --> SFP
+    RPP -.-> PFP
     CC --> IIS --> EFI --> DB
     CC --> IOW --> EFO --> DB
 
@@ -80,7 +85,8 @@ Para depurar ambos procesos (Api + Notifications) a la vez desde Visual Studio, 
 | Endpoint | Qué hace |
 |---|---|
 | `POST /api/checkout/{orderId}/charge` | Cobra una orden. Requiere header `Idempotency-Key`. |
-| `POST /api/simulation/{mode}` | Cambia el modo del proveedor de pago falso: `Success`, `TransientFailure`, `PersistentFailure`. |
+| `POST /api/simulation/{mode}` | Cambia el modo del proveedor de pago falso ACTIVO: `Success`, `TransientFailure`, `PersistentFailure`. |
+| `POST /api/simulation/provider/{provider}` | Cambia en caliente cuál proveedor está activo: `Stripe` o `Paypal`. |
 | `GET /api/lifetime-demo` | Compara Singleton/Scoped/Transient con Guids reales — ver sección de lifetimes abajo. |
 
 ## Decisiones de arquitectura y por qué
@@ -104,6 +110,12 @@ El outbox resuelve el problema de "¿cómo garantizo que el evento de pago exito
 ### Polly: retry + circuit breaker combinados
 
 `ResiliencePolicies.CreatePaymentProviderPipeline` combina ambas estrategias en un solo `ResiliencePipeline<PaymentResult>` (Polly v8, no la v7 basada en `Policy`). Solo se reintenta y se cuenta como falla `PaymentProviderUnavailableException` — una excepción propia y controlable — nunca `Exception` genérica, porque eso incluiría bugs reales de programación que no deberían reintentarse ni abrir el circuito. Un rechazo de negocio (`Succeed = false`) tampoco cuenta como falla para Polly: técnicamente el proveedor respondió bien, solo que dijo "no".
+
+### Strategy real: Paypal seleccionable en runtime (y limpieza de dominio muerto)
+
+`PaypalFakeProvider` existía desde M1 pero nunca se registraba — código muerto que solo probaba que `IPaymentProvider` *podía* tener una segunda implementación, no que realmente la tuviera. Se resolvió con `PaymentProviderSelection` (Singleton, mismo criterio que `PaymentSimulationOptions`): guarda cuál proveedor está activo, arranca con el valor de `appsettings.json` (`Payments:Provider`) y se puede cambiar en caliente vía `POST /api/simulation/provider/{provider}`, sin reiniciar la app. El factory de `IPaymentProvider` en `Program.cs` lee esa selección y decide cuál fake concreto envolver con el decorator de Polly — la resiliencia es indiferente a cuál proveedor hay detrás, porque decora la interfaz, no una clase concreta. Ahora sí es un Strategy demostrable: dos implementaciones reales, intercambiables sin recompilar.
+
+De paso se dio de baja `ResilientCheckout.Domain/Orders/` (`Order`, `OrderStatus`): una entidad completa que nunca se persistía (sin `DbSet`, sin migración, sin controller) y cuyo único punto de contacto era una propiedad de navegación en `PaymentResult` que las fakes jamás llenaban — dominio modelado al inicio que quedó huérfano. Se eliminó junto con la propiedad `PaymentResult.Order`.
 
 ### DI lifetimes — el hilo conductor de todo el proyecto
 

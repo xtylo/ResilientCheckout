@@ -26,10 +26,14 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(connectionString));
 
-// El fake provider concreto se registra bajo su propio tipo (no como IPaymentProvider),
-// para que el decorator de abajo pueda pedirlo sin caer en una resolución circular.
+// Los dos fakes concretos se registran bajo su propio tipo (no como IPaymentProvider),
+// para que el factory de abajo pueda pedir cualquiera de los dos sin resolución
+// circular. Cuál de ellos se envuelve con el decorator lo decide PaymentProviderSelection
+// en tiempo de ejecución -- eso es lo que hace de IPaymentProvider un Strategy real,
+// no solo una interfaz con una única implementación.
 builder.Services.AddScoped<StripeFakeProvider>();
-//builder.Services.AddScoped<PaypalFakeProvider>();
+builder.Services.AddScoped<PaypalFakeProvider>();
+builder.Services.AddSingleton<PaymentProviderSelection>();
 
 // El pipeline de Polly debe ser Singleton: el circuit breaker guarda su estado
 // (Closed/Open/Half-Open y el conteo de fallas) DENTRO del pipeline. Si se creara
@@ -40,10 +44,22 @@ builder.Services.AddSingleton(sp =>
     return ResiliencePolicies.CreatePaymentProviderPipeline(logger);
 });
 
-// IPaymentProvider ahora resuelve al decorator, que envuelve al fake provider con el pipeline.
-builder.Services.AddScoped<IPaymentProvider>(sp => new ResilientPaymentProvider(
-    sp.GetRequiredService<StripeFakeProvider>(),
-    sp.GetRequiredService<ResiliencePipeline<PaymentResult>>()));
+// IPaymentProvider resuelve al decorator, que envuelve al fake ACTIVO (según
+// PaymentProviderSelection) con el mismo pipeline de Polly -- la resiliencia no sabe
+// ni le importa qué proveedor concreto hay detrás.
+builder.Services.AddScoped<IPaymentProvider>(sp =>
+{
+    var selection = sp.GetRequiredService<PaymentProviderSelection>();
+    IPaymentProvider innerProvider = selection.Current switch
+    {
+        PaymentProviderKind.Paypal => sp.GetRequiredService<PaypalFakeProvider>(),
+        _ => sp.GetRequiredService<StripeFakeProvider>()
+    };
+
+    return new ResilientPaymentProvider(
+        innerProvider,
+        sp.GetRequiredService<ResiliencePipeline<PaymentResult>>());
+});
 
 builder.Services.AddScoped<IIdempotencyStore, EFIdempotencyStore>();
 builder.Services.AddScoped<IUnitOfWork, EFUnitOfWork>();

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ResilientCheckout.Infraestructure.Payments;
 
@@ -29,6 +29,18 @@ namespace ResilientCheckout.Api.Controllers
             {
                 return BadRequest(new { message = "Invalid simulation mode. Use 'success' or 'failure'." });
             }
+        }
+
+        // Cambia en caliente cuál IPaymentProvider concreto envuelve el decorator de
+        // Polly (ver Program.cs) -- sin reiniciar la app y sin tocar el resto del flujo
+        // de checkout. Esto es lo que hace tangible que IPaymentProvider es un Strategy
+        // real: dos implementaciones intercambiables detrás de la misma abstracción,
+        // no solo una interfaz con una única implementación viva.
+        [HttpPost("provider/{provider}")]
+        public IActionResult SetPaymentProvider(PaymentProviderKind provider, [FromServices] PaymentProviderSelection selection)
+        {
+            selection.SetProvider(provider);
+            return Ok(new { message = $"Payment provider set to {provider}" });
         }
     }
 }
