@@ -4,8 +4,9 @@ using System.Text;
 
 namespace ResilientCheckout.Domain.Payments
 {
-    public interface IPaymentProvider
+    public enum PaymentProvider
     {
-        Task<PaymentResult> ChargeAsync(ChargeInstruction chargeInstruction);
+        Stripe,
+        Paypal
     }
 }
