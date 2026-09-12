@@ -4,4 +4,5 @@
   <Project Path="ResilientCheckout.Infraestructure/ResilientCheckout.Infraestructure.csproj" />
   <Project Path="ResilientCheckout/ResilientCheckout.Api.csproj" />
   <Project Path="ResilientCheckout.Notifications/ResilientCheckout.Notifications.csproj" />
+  <Project Path="ResilientCheckout.Tests/ResilientCheckout.Tests.csproj" />
 </Solution>

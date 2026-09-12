@@ -13,6 +13,7 @@ using ResilientCheckout.Infraestructure.Outbox;
 using ResilientCheckout.Infraestructure.Payments;
 using ResilientCheckout.Infraestructure.Persistence;
 using ResilientCheckout.Infraestructure.Resilience;
+using ResilientCheckout.Api.LifetimeDemo;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -63,6 +64,12 @@ builder.Services.AddSingleton<IEventPublisher, ServiceBusPublisher>();
 // pendientes y publicándolos al Topic. Internamente abre su propio scope por ciclo
 // para poder usar AppDbContext (Scoped) sin violar su propio lifetime de Singleton.
 builder.Services.AddHostedService<ServiceBusOutboxRelay>();
+
+// LifetimeDemo: la MISMA clase concreta (OperationService) registrada bajo tres
+// lifetimes distintos, para poder verlos y compararlos vía LifetimeDemoController.
+builder.Services.AddSingleton<IOperationSingleton, OperationService>();
+builder.Services.AddScoped<IOperationScoped, OperationService>();
+builder.Services.AddTransient<IOperationTransient, OperationService>();
 
 var app = builder.Build();
 
