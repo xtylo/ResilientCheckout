@@ -3,7 +3,7 @@ using ResilientCheckout.Domain.Notifications;
 
 namespace ResilientCheckout.Notifications.Channels
 {
-    // Fake -- igual que StripeFakeProvider, simula el envío sin llamar a nada real.
+    // Fake -- same as StripeFakeProvider, simulates sending without calling anything real.
     public class EmailChannel : INotificationChannel
     {
         private readonly ILogger<EmailChannel> _logger;
@@ -15,7 +15,7 @@ namespace ResilientCheckout.Notifications.Channels
 
         public Task SendAsync(NotificationRequest request, CancellationToken cancellationToken = default)
         {
-            _logger.LogInformation("[Email] Orden {OrderId}: {Message}", request.OrderId, request.Message);
+            _logger.LogInformation("[Email] Order {OrderId}: {Message}", request.OrderId, request.Message);
             return Task.CompletedTask;
         }
     }

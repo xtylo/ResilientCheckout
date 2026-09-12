@@ -1,9 +1,9 @@
 namespace ResilientCheckout.Api.LifetimeDemo
 {
-    // Contrato compartido: cada "marca" es una interfaz vacía que hereda de este,
-    // solo para poder registrar la MISMA clase concreta bajo tres lifetimes distintos
-    // en el contenedor de DI (no se puede registrar la misma interfaz tres veces con
-    // lifetimes distintos -- por eso tres interfaces).
+    // Shared contract: each "marker" is an empty interface that inherits from this one,
+    // just so the SAME concrete class can be registered under three different lifetimes
+    // in the DI container (you can't register the same interface three times with
+    // different lifetimes -- hence three interfaces).
     public interface IOperationId
     {
         Guid OperationId { get; }

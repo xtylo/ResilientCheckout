@@ -6,11 +6,11 @@ using Xunit;
 
 namespace ResilientCheckout.Tests.Idempotency
 {
-    // FAKE: no es la base real (SQL Server/SQLite en disco) -- es una implementación
-    // funcional y liviana (SQLite en memoria) que se comporta como la real: mismo
-    // motor relacional, misma restricción unique sobre la columna Key. La clase bajo
-    // prueba (EFIdempotencyStore) NO se toca ni se reemplaza -- corre tal cual corre
-    // en producción, solo que contra un Fake de su única dependencia externa (la BD).
+    // FAKE: this isn't the real database (SQL Server/SQLite on disk) -- it's a
+    // functional, lightweight implementation (in-memory SQLite) that behaves like the
+    // real thing: same relational engine, same unique constraint on the Key column. The
+    // class under test (EFIdempotencyStore) is NOT touched or replaced -- it runs exactly
+    // as it does in production, just against a Fake of its only external dependency (the DB).
     public class EFIdempotencyStoreFakeTests : IDisposable
     {
         private readonly SqliteConnection _connection;
@@ -19,8 +19,8 @@ namespace ResilientCheckout.Tests.Idempotency
 
         public EFIdempotencyStoreFakeTests()
         {
-            // La conexión debe permanecer abierta durante todo el test -- SQLite
-            // ":memory:" borra la base en cuanto se cierra la última conexión sobre ella.
+            // The connection must stay open for the whole test -- SQLite
+            // ":memory:" wipes the database as soon as the last connection to it closes.
             _connection = new SqliteConnection("DataSource=:memory:");
             _connection.Open();
 
@@ -32,13 +32,13 @@ namespace ResilientCheckout.Tests.Idempotency
             schemaContext.Database.EnsureCreated();
         }
 
-        // Cada llamada crea su PROPIO AppDbContext (su propio change tracker) sobre la
-        // MISMA conexión/base -- así se modela fielmente lo que pasa en producción:
-        // cada request HTTP recibe un AppDbContext Scoped fresco, nunca el mismo que
-        // otra request. Reusar un solo DbContext entre "dos requests" escondería el bug
-        // real y dispararía en su lugar un InvalidOperationException de identity
-        // resolution en el change tracker -- no la excepción de negocio (DbUpdateException
-        // por el unique constraint) que EFIdempotencyStore sabe manejar.
+        // Each call creates its OWN AppDbContext (its own change tracker) over the
+        // SAME connection/database -- this faithfully mirrors what happens in production:
+        // every HTTP request gets a fresh Scoped AppDbContext, never the same one another
+        // request got. Reusing a single DbContext across "two requests" would hide the
+        // real bug and instead trigger an InvalidOperationException from identity
+        // resolution in the change tracker -- not the business exception (DbUpdateException
+        // from the unique constraint) that EFIdempotencyStore knows how to handle.
         private EFIdempotencyStore CreateStore()
         {
             var dbContext = new AppDbContext(_options);
@@ -62,8 +62,8 @@ namespace ResilientCheckout.Tests.Idempotency
             var firstRequestStore = CreateStore();
             await firstRequestStore.TryReserveAsync("key-1", orderId: 1);
 
-            // "Segunda request" concurrente usando la MISMA Idempotency-Key: recibe su
-            // propio AppDbContext (Scoped) -- por eso es un store nuevo, no el mismo de arriba.
+            // A concurrent "second request" using the SAME Idempotency-Key: it gets its
+            // own AppDbContext (Scoped) -- that's why it's a new store, not the same one as above.
             var secondRequestStore = CreateStore();
             var secondAttempt = await secondRequestStore.TryReserveAsync("key-1", orderId: 1);
 
@@ -77,7 +77,7 @@ namespace ResilientCheckout.Tests.Idempotency
             await firstRequestStore.TryReserveAsync("key-1", orderId: 1);
             await firstRequestStore.ReleaseAsync("key-1");
 
-            // Una request posterior (tras el release) también recibe su propio DbContext.
+            // A later request (after the release) also gets its own DbContext.
             var laterRequestStore = CreateStore();
             var reservedAgain = await laterRequestStore.TryReserveAsync("key-1", orderId: 1);
 

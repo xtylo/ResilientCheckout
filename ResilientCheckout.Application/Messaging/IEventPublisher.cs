@@ -1,9 +1,9 @@
-﻿using ResilientCheckout.Domain.Outbox;
+using ResilientCheckout.Domain.Outbox;
 
 namespace ResilientCheckout.Application.Messaging
 {
-    // Abstracción de "publicar un evento del outbox hacia afuera". Application/Domain
-    // no saben que por debajo es Azure Service Bus — solo Infraestructure lo sabe.
+    // Abstraction for "publish an outbox event to the outside world". Application/Domain
+    // don't know that underneath it's Azure Service Bus -- only Infraestructure knows that.
     public interface IEventPublisher
     {
         Task PublishAsync(OutboxMessage message, CancellationToken cancellationToken = default);

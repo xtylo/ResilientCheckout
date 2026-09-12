@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -7,10 +7,10 @@ using ResilientCheckout.Infraestructure.Persistence;
 
 namespace ResilientCheckout.Infraestructure.Messaging
 {
-    // BackgroundService vive como Singleton durante toda la vida de la app. Por eso NO
-    // puede recibir AppDbContext (Scoped) directo en el constructor -- necesita abrir su
-    // propio scope en cada ciclo de polling para poder usarlo. IEventPublisher sí es
-    // seguro de inyectar directo aquí porque también es Singleton.
+    // BackgroundService lives as a Singleton for the whole life of the app. That's why it
+    // CANNOT receive AppDbContext (Scoped) directly in the constructor -- it needs to open
+    // its own scope on every polling cycle to be able to use it. IEventPublisher IS safe
+    // to inject directly here because it's also a Singleton.
     public class ServiceBusOutboxRelay : BackgroundService
     {
         private static readonly TimeSpan PollingInterval = TimeSpan.FromSeconds(3);
@@ -42,10 +42,10 @@ namespace ResilientCheckout.Infraestructure.Messaging
                 }
                 catch (Exception ex)
                 {
-                    // Un fallo en un ciclo (ej. la base no responde un momento) no debe
-                    // tumbar el BackgroundService entero -- se registra y se reintenta
-                    // en el siguiente tick.
-                    _logger.LogError(ex, "Fallo inesperado en el ciclo del outbox relay.");
+                    // A failure in one cycle (e.g. the database doesn't respond for a moment)
+                    // must not bring down the whole BackgroundService -- it's logged and
+                    // retried on the next tick.
+                    _logger.LogError(ex, "Unexpected failure in the outbox relay cycle.");
                 }
             }
         }
@@ -75,7 +75,7 @@ namespace ResilientCheckout.Infraestructure.Messaging
                 {
                     message.RetryCount++;
                     _logger.LogWarning(ex,
-                        "No se pudo publicar el OutboxMessage {MessageId} (intento #{RetryCount}).",
+                        "Could not publish OutboxMessage {MessageId} (attempt #{RetryCount}).",
                         message.Id, message.RetryCount);
                 }
             }
@@ -83,7 +83,7 @@ namespace ResilientCheckout.Infraestructure.Messaging
             await dbContext.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
-                "Outbox relay: {Processed}/{Total} mensajes publicados en este ciclo.",
+                "Outbox relay: {Processed}/{Total} messages published in this cycle.",
                 pendingMessages.Count(m => m.ProcessedAt != null),
                 pendingMessages.Count);
         }

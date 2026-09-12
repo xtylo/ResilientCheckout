@@ -27,15 +27,15 @@ namespace ResilientCheckout.Api.Controllers
             }
             else
             {
-                return BadRequest(new { message = "Invalid simulation mode. Use 'success' or 'failure'." });
+                return BadRequest(new { message = "Invalid simulation mode. Use 'success', 'transientfailure' or 'persistentfailure'." });
             }
         }
 
-        // Cambia en caliente cuál IPaymentProvider concreto envuelve el decorator de
-        // Polly (ver Program.cs) -- sin reiniciar la app y sin tocar el resto del flujo
-        // de checkout. Esto es lo que hace tangible que IPaymentProvider es un Strategy
-        // real: dos implementaciones intercambiables detrás de la misma abstracción,
-        // no solo una interfaz con una única implementación viva.
+        // Hot-switches which concrete IPaymentProvider the Polly decorator wraps
+        // (see Program.cs) -- without restarting the app and without touching the rest of the
+        // checkout flow. This is what makes it tangible that IPaymentProvider is a real
+        // Strategy: two interchangeable implementations behind the same abstraction,
+        // not just an interface with a single live implementation.
         [HttpPost("provider/{provider}")]
         public IActionResult SetPaymentProvider(PaymentProviderKind provider, [FromServices] PaymentProviderSelection selection)
         {

@@ -1,27 +1,28 @@
 # ResilientCheckout
 
-Proyecto personal de portafolio construido para reforzar, con código real y no solo teoría, cuatro puntos que salieron débiles en una entrevista técnica (lifetimes de DI, resiliencia con Polly, Circuit Breaker, y Azure Service Bus) junto con patrones que ya se dominaban pero vale la pena demostrar con un caso concreto (idempotencia, Transactional Outbox, Strategy).
+Personal portfolio project built to reinforce, with real code and not just theory, four points that came up weak in a technical interview (DI lifetimes, resilience with Polly, Circuit Breaker, and Azure Service Bus) together with patterns that were already mastered but are worth demonstrating with a concrete case (idempotency, Transactional Outbox, Strategy).
 
-El dominio es deliberadamente simple — un endpoint de cobro con proveedores de pago falsos — para que la complejidad esté toda en la infraestructura de resiliencia y mensajería, que es el objetivo real del ejercicio.
+The domain is deliberately simple — a charge endpoint with fake payment providers — so that all the complexity sits in the resilience and messaging infrastructure, which is the real goal of the exercise.
 
-## Arquitectura
+## Architecture
 
-Clean Architecture con cuatro proyectos más uno adicional:
+Clean Architecture with four projects plus one extra:
 
-- **`ResilientCheckout.Domain`** — cero dependencias externas. Entidades (`PaymentResult`, `OutboxMessage`, `IdempotencyRecord`), y las abstracciones que el propio dominio necesita expresar (`IPaymentProvider`, `PaymentProviderUnavailableException`).
-- **`ResilientCheckout.Application`** — referencia solo a Domain. Comandos (`ChargeCardCommand`) y las abstracciones de infraestructura que Application necesita pero no implementa (`IIdempotencyStore`, `IOutboxWritter`, `IUnitOfWork`, `IEventPublisher`).
-- **`ResilientCheckout.Infraestructure`** — referencia a Application y Domain. Todas las implementaciones concretas: EF Core, Polly, Azure Service Bus, los proveedores de pago falsos.
-- **`ResilientCheckout` (`ResilientCheckout.Api.csproj`)** — referencia a los tres anteriores. Composition root: controllers, `Program.cs` con todo el registro de DI.
-- **`ResilientCheckout.Notifications`** — proceso separado (Worker Service). Solo referencia a Domain (los contratos `INotificationChannel`/`NotificationRequest`) — nunca a Application ni a Infraestructura, porque no comparte nada del flujo de checkout, solo consume eventos ya publicados.
+- **`ResilientCheckout.Domain`** — zero external dependencies. Entities (`PaymentResult`, `OutboxMessage`, `IdempotencyRecord`), and the abstractions the domain itself needs to express (`IPaymentProvider`, `PaymentProviderUnavailableException`).
+- **`ResilientCheckout.Application`** — references only Domain. Commands (`ChargeCardCommand`) and the infrastructure abstractions Application needs but doesn't implement (`IIdempotencyStore`, `IOutboxWritter`, `IUnitOfWork`, `IEventPublisher`).
+- **`ResilientCheckout.Infraestructure`** — references Application and Domain. All the concrete implementations: EF Core, Polly, Azure Service Bus, the fake payment providers.
+- **`ResilientCheckout` (`ResilientCheckout.Api.csproj`)** — references the three above. Composition root: controllers, `Program.cs` with all the DI registration.
+- **`ResilientCheckout.Notifications`** — separate process (Worker Service). Only references Domain (the `INotificationChannel`/`NotificationRequest` contracts) — never Application or Infraestructure, because it doesn't share anything from the checkout flow, it only consumes already-published events.
 
 ```mermaid
 flowchart LR
     subgraph API["ResilientCheckout (Api)"]
-        CC["CheckoutController"]
+        CC["CheckoutController\n(thin: HTTP <-> Command)"]
         LDC["LifetimeDemoController"]
     end
 
     subgraph APP["Application"]
+        Handler["ChargeOrderHandler\n(orchestrates the charge)"]
         IPP["IPaymentProvider"]
         IIS["IIdempotencyStore"]
         IOW["IOutboxWritter"]
@@ -52,14 +53,16 @@ flowchart LR
         Push["PushChannel"]
     end
 
-    CC --> IPP --> RPP
-    Sel -.->|elige cuál envolver| RPP
+    CC --> Handler
+    Handler --> IPP --> RPP
+    Sel -.->|picks which one to wrap| RPP
     RPP --> SFP
     RPP -.-> PFP
-    CC --> IIS --> EFI --> DB
-    CC --> IOW --> EFO --> DB
+    Handler --> IIS --> EFI --> DB
+    Handler --> IOW --> EFO --> DB
+    Handler --> IUOW
 
-    Relay -->|lee pendientes| DB
+    Relay -->|reads pending| DB
     Relay --> Pub --> Topic
     Topic --> SubN
     Topic --> SubB
@@ -70,80 +73,92 @@ flowchart LR
     Disp --> Push
 ```
 
-## Cómo correrlo localmente
+## Running it locally
 
-1. **Emulador de Azure Service Bus** (Docker): `docker compose up -d` desde la raíz del repo. Levanta el emulador oficial + su SQL Edge de respaldo, con el Topic `payment-events` y las Subscriptions `notifications`/`billing-audit` ya definidas en `servicebus-emulator/Config.json`.
-2. **Migraciones de EF Core** (si es la primera vez, o si cambiaron las entidades): `dotnet ef database update --project ResilientCheckout.Infraestructure --startup-project ResilientCheckout`.
+1. **Azure Service Bus emulator** (Docker): `docker compose up -d` from the repo root. Brings up the official emulator + its backing SQL Edge, with the `payment-events` Topic and the `notifications`/`billing-audit` Subscriptions already defined in `servicebus-emulator/Config.json`.
+2. **EF Core migrations** (first time, or if the entities changed): `dotnet ef database update --project ResilientCheckout.Infraestructure --startup-project ResilientCheckout`.
 3. **Api**: `dotnet run --project ResilientCheckout`.
-4. **Worker de notificaciones** (proceso separado, terminal aparte): `dotnet run --project ResilientCheckout.Notifications`.
-5. **Tests**: `dotnet test` (o Test Explorer en Visual Studio).
+4. **Notifications worker** (separate process, separate terminal): `dotnet run --project ResilientCheckout.Notifications`.
+5. **Tests**: `dotnet test` (or Test Explorer in Visual Studio).
 
-Para depurar ambos procesos (Api + Notifications) a la vez desde Visual Studio, usa *Configure Startup Projects* y marca los dos como *Start* — pero para poder detener solo uno (como en la demo de "el mensaje nunca se pierde", más abajo) es más práctico correrlos en dos terminales independientes con `dotnet run`.
+To debug both processes (Api + Notifications) at once from Visual Studio, use *Configure Startup Projects* and mark both as *Start* — but to be able to stop just one (as in the "message is never lost" demo below) it's more practical to run them in two separate terminals with `dotnet run`.
 
-## Endpoints principales
+## Main endpoints
 
-| Endpoint | Qué hace |
+| Endpoint | What it does |
 |---|---|
-| `POST /api/checkout/{orderId}/charge` | Cobra una orden. Requiere header `Idempotency-Key`. |
-| `POST /api/simulation/{mode}` | Cambia el modo del proveedor de pago falso ACTIVO: `Success`, `TransientFailure`, `PersistentFailure`. |
-| `POST /api/simulation/provider/{provider}` | Cambia en caliente cuál proveedor está activo: `Stripe` o `Paypal`. |
-| `GET /api/lifetime-demo` | Compara Singleton/Scoped/Transient con Guids reales — ver sección de lifetimes abajo. |
+| `POST /api/checkout/{orderId}/charge` | Charges an order. Requires the `Idempotency-Key` header. |
+| `POST /api/simulation/{mode}` | Changes the mode of the currently ACTIVE fake payment provider: `Success`, `TransientFailure`, `PersistentFailure`. |
+| `POST /api/simulation/provider/{provider}` | Hot-switches which provider is active: `Stripe` or `Paypal`. |
+| `GET /api/lifetime-demo` | Compares Singleton/Scoped/Transient with real Guids — see the lifetimes section below. |
 
-## Decisiones de arquitectura y por qué
+## Architecture decisions and why
 
-### Domain no puede depender de Application
+### Domain can't depend on Application
 
-`IPaymentProvider` originalmente recibía un `ChargeCardCommand` (tipo de Application) — eso forzaba a Domain a referenciar Application, invirtiendo la dirección de dependencia que Clean Architecture exige. Se corrigió creando `ChargeInstruction`, un DTO mínimo dentro de Domain con solo lo que el proveedor de pago necesita (`OrderId`); `ChargeCardCommand.ToChargeInstruction()` hace el mapeo del lado de Application, que sí puede conocer a Domain.
+`IPaymentProvider` originally received a `ChargeCardCommand` (an Application type) — that forced Domain to reference Application, inverting the dependency direction Clean Architecture requires. It was fixed by creating `ChargeInstruction`, a minimal DTO inside Domain with only what the payment provider needs (`OrderId`); `ChargeCardCommand.ToChargeInstruction()` does the mapping on the Application side, which can know about Domain.
 
-### Idempotencia: reservar primero, no revisar-y-luego-actuar
+### Idempotency: reserve first, don't check-then-act
 
-La primera versión revisaba "¿existe esta key?" y, si no, la creaba — clásica condición de carrera entre el chequeo y la escritura bajo carga concurrente. Se rediseñó como *reserve-first*: `TryReserveAsync` intenta insertar directamente y deja que la restricción unique de la base de datos (`Key` como llave primaria) sea el árbitro. Si otra request ya reservó esa key, `SaveChangesAsync` lanza `DbUpdateException`, que se atrapa y se traduce en `false`. La base de datos decide, no una condición en memoria que puede perder la carrera.
+The first version checked "does this key exist?" and, if not, created it — a classic race condition between the check and the write under concurrent load. It was redesigned as *reserve-first*: `TryReserveAsync` tries to insert directly and lets the database's unique constraint (`Key` as the primary key) be the arbiter. If another request already reserved that key, `SaveChangesAsync` throws `DbUpdateException`, which is caught and translated into `false`. The database decides, not an in-memory condition that can lose the race.
 
-Además, la key solo se libera (`ReleaseAsync`) cuando la operación **nunca se completó de verdad** (circuito abierto, proveedor no disponible tras reintentos) — nunca cuando el resultado fue un rechazo de negocio (`Succeed = false`). Un rechazo de negocio es un desenlace válido y la key debe seguir consumida; una falla técnica no debería quemar la posibilidad de reintentar con la misma key.
+Also, the key is only released (`ReleaseAsync`) when the operation **never truly completed** (circuit open, provider unavailable after retries) — never when the outcome was a business rejection (`Succeed = false`). A business rejection is a valid outcome and the key must stay consumed; a technical failure shouldn't burn the chance to retry with the same key.
 
 ### Transactional Outbox + Unit of Work
 
-Escribir el registro de idempotencia, el `OutboxMessage` y confirmar el cobro son tres operaciones que deben ser atómicas: si una falla, ninguna debe persistir. `IUnitOfWork` abstrae un solo `SaveChangesAsync()` sobre el mismo `AppDbContext` Scoped compartido por toda la request — la garantía real de atomicidad la da EF Core (su `DbContext` ya es un Unit of Work), pero la interfaz desacopla a Application/Api de conocer EF Core directamente.
+Writing the idempotency record, the `OutboxMessage`, and confirming the charge are three operations that must be atomic: if one fails, none should persist. `IUnitOfWork` abstracts a single `SaveChangesAsync()` over the same Scoped `AppDbContext` shared across the whole request — the real atomicity guarantee comes from EF Core (its `DbContext` is already a Unit of Work), but the interface decouples Application/Api from knowing about EF Core directly.
 
-El outbox resuelve el problema de "¿cómo garantizo que el evento de pago exitoso se publica, incluso si el broker de mensajería está caído en ese instante?" — el evento se guarda en la misma transacción que el resto del cobro, y un proceso aparte (`ServiceBusOutboxRelay`) se encarga de sacarlo hacia Service Bus cuando pueda.
+The outbox solves the problem of "how do I guarantee the successful-payment event gets published, even if the message broker is down at that exact instant?" — the event is saved in the same transaction as the rest of the charge, and a separate process (`ServiceBusOutboxRelay`) takes care of getting it out to Service Bus whenever it can.
 
-### Polly: retry + circuit breaker combinados
+### Polly: retry + circuit breaker combined
 
-`ResiliencePolicies.CreatePaymentProviderPipeline` combina ambas estrategias en un solo `ResiliencePipeline<PaymentResult>` (Polly v8, no la v7 basada en `Policy`). Solo se reintenta y se cuenta como falla `PaymentProviderUnavailableException` — una excepción propia y controlable — nunca `Exception` genérica, porque eso incluiría bugs reales de programación que no deberían reintentarse ni abrir el circuito. Un rechazo de negocio (`Succeed = false`) tampoco cuenta como falla para Polly: técnicamente el proveedor respondió bien, solo que dijo "no".
+`ResiliencePolicies.CreatePaymentProviderPipeline` combines both strategies into a single `ResiliencePipeline<PaymentResult>` (Polly v8, not the `Policy`-based v7). Only `PaymentProviderUnavailableException` — an owned, controlled exception — is retried and counted as a failure, never a generic `Exception`, because that would include real programming bugs that shouldn't be retried or trip the circuit. A business rejection (`Succeed = false`) doesn't count as a failure for Polly either: technically the provider responded fine, it just said "no".
 
-### Strategy real: Paypal seleccionable en runtime (y limpieza de dominio muerto)
+### Command + Handler, no mediator: a controller that doesn't orchestrate
 
-`PaypalFakeProvider` existía desde M1 pero nunca se registraba — código muerto que solo probaba que `IPaymentProvider` *podía* tener una segunda implementación, no que realmente la tuviera. Se resolvió con `PaymentProviderSelection` (Singleton, mismo criterio que `PaymentSimulationOptions`): guarda cuál proveedor está activo, arranca con el valor de `appsettings.json` (`Payments:Provider`) y se puede cambiar en caliente vía `POST /api/simulation/provider/{provider}`, sin reiniciar la app. El factory de `IPaymentProvider` en `Program.cs` lee esa selección y decide cuál fake concreto envolver con el decorator de Polly — la resiliencia es indiferente a cuál proveedor hay detrás, porque decora la interfaz, no una clase concreta. Ahora sí es un Strategy demostrable: dos implementaciones reales, intercambiables sin recompilar.
+The original plan considered Wolverine for CQRS (`Commands` + `Handlers` folder). The decision was made not to adopt it: the four points this project exists to reinforce (lifetimes, Polly, Circuit Breaker, Service Bus) don't include mediator libraries, and Wolverine brings its own integrated Transactional Inbox/Outbox — adopting it halfway would have competed directly with the outbox already hand-built in M2/M4 (or replaced that demonstration, or coexisted unused, which looks worse than not having it at all).
 
-De paso se dio de baja `ResilientCheckout.Domain/Orders/` (`Order`, `OrderStatus`): una entidad completa que nunca se persistía (sin `DbSet`, sin migración, sin controller) y cuyo único punto de contacto era una propiedad de navegación en `PaymentResult` que las fakes jamás llenaban — dominio modelado al inicio que quedó huérfano. Se eliminó junto con la propiedad `PaymentResult.Order`.
+What was kept from the original plan, without the framework: separating the Command from the Handler. Before, `CheckoutController.Charge` received all four dependencies (`IPaymentProvider`, `IIdempotencyStore`, `IOutboxWritter`, `IUnitOfWork`) and orchestrated the reservation, the charge, the exception handling, and the outbox — a controller that was, in practice, a use case disguised as an HTTP action. Now `ChargeOrderHandler` (Application) concentrates all that orchestration and returns a neutral `ChargeOrderResult` (an `Outcome` enum + data) that knows nothing about HTTP; the controller was reduced to validating the shape of the request and translating that result into a status code. The concrete benefit: `ChargeOrderHandler` is tested without `HttpContext`, without `ControllerContext`, without any ASP.NET Core at all — and if a mediator (Wolverine or another) is ever adopted, this is exactly the class it would end up invoking.
 
-### DI lifetimes — el hilo conductor de todo el proyecto
+Along the way, this refactor uncovered a coupling worth fixing: the controller was catching `BrokenCircuitException` (a **Polly** type) directly, which meant even the Api layer knew an Infraestructure implementation detail. That translation was moved into `ResilientPaymentProvider` itself: it now catches `BrokenCircuitException` internally and rethrows it as `PaymentProviderUnavailableException` (a **Domain** type). The result is that `ChargeOrderHandler` — and anything else outside Infraestructura — only needs to know a single exception type for "the provider isn't available right now", regardless of whether the cause was exhausted retries or an already-open circuit.
 
-- **Scoped**: `AppDbContext` y todo lo que depende directamente de él (`EFIdempotencyStore`, `EFOutboxWritter`, `EFUnitOfWork`, `ResilientPaymentProvider`/`StripeFakeProvider`) — cada request necesita su propio change tracker aislado.
-- **Singleton**: el `ResiliencePipeline<PaymentResult>` de Polly (el circuit breaker guarda su estado — Closed/Open/Half-Open — *dentro* del pipeline; uno nuevo por request jamás podría abrir el circuito), `ServiceBusClient`/`IEventPublisher` (mantienen la conexión AMQP viva), y `PaymentSimulationOptions` (el estado de la simulación debe sobrevivir entre requests para poder forzar fallas desde otro endpoint).
-- **`BackgroundService` es Singleton aunque nadie lo declare así** — lo instancia el host una sola vez para toda la vida de la app. Por eso `ServiceBusOutboxRelay` no puede recibir `AppDbContext` directo en el constructor; usa `IServiceScopeFactory` para abrir un scope nuevo en cada ciclo de polling.
-- `GET /api/lifetime-demo` hace esta distinción tangible: pide cada lifetime dos veces en la misma request y compara Guids. Singleton y Scoped salen iguales *dentro* de una request; solo Scoped cambia *entre* requests; Transient nunca es igual, ni siquiera dentro de la misma request.
+### Real Strategy: Paypal selectable at runtime (and dead-domain cleanup)
 
-### Service Bus: relay pull-based vs. worker push-based
+`PaypalFakeProvider` had existed since M1 but was never registered — dead code that only proved `IPaymentProvider` *could* have a second implementation, not that it actually did. This was resolved with `PaymentProviderSelection` (Singleton, same reasoning as `PaymentSimulationOptions`): it holds which provider is active, starts from the value in `appsettings.json` (`Payments:Provider`), and can be hot-switched via `POST /api/simulation/provider/{provider}`, without restarting the app. The `IPaymentProvider` factory in `Program.cs` reads that selection and decides which concrete fake to wrap with the Polly decorator — resilience is indifferent to which provider sits behind it, because it decorates the interface, not a concrete class. Now it's genuinely a demonstrable Strategy: two real implementations, swappable without recompiling.
 
-`ServiceBusOutboxRelay` hace *polling* — cada 3 segundos pregunta a la base de datos qué mensajes están pendientes y los publica al Topic `payment-events`. `ResilientCheckout.Notifications` (proceso separado) es *push* — se suscribe con `ServiceBusProcessor` a la Subscription `notifications` y Azure Service Bus le entrega los mensajes en cuanto llegan, vía el evento `ProcessMessageAsync`. Son dos mecanismos de entrega distintos resolviendo dos mitades del problema de "at-least-once": el outbox garantiza que el evento *sale* de la base de datos aunque el broker esté caído un instante; la Subscription garantiza que el evento *le llega* al consumidor aunque este haya estado caído un rato — comprobado apagando el worker, cobrando, y confirmando que el mensaje seguía ahí al reiniciarlo.
+`PaypalFakeProvider` was also made symmetric with `StripeFakeProvider`: both receive the same `PaymentSimulationOptions` (Singleton) and throw `PaymentProviderUnavailableException` when it's time to fail. It's deliberate that they share a single simulation instance instead of one per provider — the failure switch is "whichever provider is active right now", not a specific one, so switching from Stripe to Paypal mid-way through a resilience demo doesn't require reconfiguring anything.
 
-`AutoCompleteMessages = false` en el processor es deliberado: el worker decide explícitamente cuándo completar (éxito) o abandonar (falla → Service Bus reentrega, hasta `MaxDeliveryCount` veces antes de mandarlo a la dead-letter queue).
+Along the way, `ResilientCheckout.Domain/Orders/` (`Order`, `OrderStatus`) was retired: a whole entity that was never persisted (no `DbSet`, no migration, no controller) whose only point of contact was a navigation property on `PaymentResult` that the fakes never populated — domain modeled early on that ended up orphaned. It was removed along with the `PaymentResult.Order` property.
 
-`NotificationDispatcher` recibe `IEnumerable<INotificationChannel>` — el contenedor de DI junta automáticamente las tres implementaciones (`EmailChannel`, `SmsChannel`, `PushChannel`) registradas bajo esa interfaz. Agregar un cuarto canal es una línea de registro en `Program.cs`, cero cambios en el dispatcher (Strategy pattern).
+### DI lifetimes — the thread running through the whole project
 
-### Un bug real: enums y `System.Text.Json`
+- **Scoped**: `AppDbContext` and everything that depends directly on it (`EFIdempotencyStore`, `EFOutboxWritter`, `EFUnitOfWork`, `ResilientPaymentProvider`/`StripeFakeProvider`/`PaypalFakeProvider`), plus `ChargeOrderHandler` (Application) — it wouldn't make sense for it to live longer than the Scoped dependencies it orchestrates.
+- **Singleton**: Polly's `ResiliencePipeline<PaymentResult>` (the circuit breaker keeps its state — Closed/Open/Half-Open — *inside* the pipeline; a new one per request could never open the circuit), `ServiceBusClient`/`IEventPublisher` (they keep the AMQP connection alive), and `PaymentSimulationOptions` (the simulation state must survive across requests so failures can be forced from another endpoint).
+- **`BackgroundService` is a Singleton even though nobody declares it that way** — the host instantiates it exactly once for the whole life of the app. That's why `ServiceBusOutboxRelay` can't receive `AppDbContext` directly in its constructor; it uses `IServiceScopeFactory` to open a new scope on every polling cycle.
+- `GET /api/lifetime-demo` makes this distinction tangible: it requests each lifetime twice within the same request and compares Guids. Singleton and Scoped come out equal *within* a request; only Scoped changes *between* requests; Transient is never equal, not even within the same request.
 
-`System.Text.Json` serializa enums como su valor numérico por defecto (`PaymentProvider.Stripe` → `0`), no como texto. El payload del outbox se serializaba así, y el worker de notificaciones (que esperaba `"Provider"` como string) tronaba al deserializar. La solución no fue parchar el consumidor para aceptar números — fue corregir al productor (`EFOutboxWritter`) para que serialice enums como string (`JsonStringEnumConverter`), porque ese mismo payload también alimenta la Subscription `billing-audit`: un número ahí es indescifrable sin el enum a la mano, y es frágil (reordenar el enum cambiaría en silencio el significado de eventos ya guardados). Buen recordatorio de que un contrato de mensaje mal pensado en el productor se manifiesta como un bug en el consumidor, no donde está la causa real.
+### Service Bus: pull-based relay vs. push-based worker
 
-## Testing: Mock, Stub y Fake — a propósito, no por accidente
+`ServiceBusOutboxRelay` does *polling* — every 3 seconds it asks the database which messages are pending and publishes them to the `payment-events` Topic. `ResilientCheckout.Notifications` (separate process) is *push* — it subscribes with a `ServiceBusProcessor` to the `notifications` Subscription and Azure Service Bus delivers messages to it as soon as they arrive, via the `ProcessMessageAsync` event. These are two different delivery mechanisms solving two halves of the "at-least-once" problem: the outbox guarantees the event *leaves* the database even if the broker is down for an instant; the Subscription guarantees the event *reaches* the consumer even if it had been down for a while — verified by shutting down the worker, charging, and confirming the message was still there when it was restarted.
 
-`ResilientCheckout.Tests` (xUnit + Moq) usa deliberadamente los tres tipos de test double, cada uno donde tiene sentido y no donde "ya se usaba Moq para todo":
+`AutoCompleteMessages = false` on the processor is deliberate: the worker explicitly decides when to complete (success) or abandon (failure → Service Bus redelivers, up to `MaxDeliveryCount` times before sending it to the dead-letter queue).
 
-- **Fake** (`EFIdempotencyStoreFakeTests`) — SQLite en memoria como reemplazo funcional y ligero de la base real. `EFIdempotencyStore` corre sin modificar; lo que cambia es su dependencia externa. Cada "request" simulada usa su propio `AppDbContext` (mismo criterio de Scoped que en producción) — reusar uno solo entre dos "requests" esconde el bug real detrás de un error distinto (conflicto de identity resolution en el change tracker en vez de la `DbUpdateException` de negocio).
-- **Stub** (`CheckoutControllerStubTests`) — `StubPaymentProvider` regresa siempre la misma respuesta enlatada; a nadie le importa cómo se le llamó. Sirve para aislar el resto del flujo del controller sin depender de si el pago "salió bien" de verdad.
-- **Mock** (`CheckoutControllerMockTests`) — Moq verificando interacciones que un Stub no puede probar: que `IPaymentProvider.ChargeAsync` **nunca se llama** cuando la reserva de idempotencia falla (`Times.Never`), y que el outbox y el unit of work se invocan exactamente una vez tras un cobro exitoso.
+`NotificationDispatcher` receives `IEnumerable<INotificationChannel>` — the DI container automatically gathers the three implementations (`EmailChannel`, `SmsChannel`, `PushChannel`) registered under that interface. Adding a fourth channel is one registration line in `Program.cs`, zero changes to the dispatcher (Strategy pattern).
 
-## Próximos pasos (opcional)
+### A real bug: enums and `System.Text.Json`
 
-M6, no implementado: patrón Saga con transacción compensatoria, para un flujo que involucre más de un paso que pueda fallar a mitad de camino y necesite deshacerse explícitamente.
+`System.Text.Json` serializes enums as their numeric value by default (`PaymentProvider.Stripe` → `0`), not as text. The outbox payload was being serialized that way, and the notifications worker (which expected `"Provider"` as a string) blew up when deserializing. The fix wasn't to patch the consumer to accept numbers — it was to fix the producer (`EFOutboxWritter`) to serialize enums as strings (`JsonStringEnumConverter`), because that same payload also feeds the `billing-audit` Subscription: a number there is indecipherable without the enum at hand, and it's fragile (reordering the enum would silently change the meaning of already-stored events). A good reminder that a poorly-thought-out message contract in the producer shows up as a bug in the consumer, not where the real cause is.
+
+## Testing: Mock, Stub and Fake — on purpose, not by accident
+
+`ResilientCheckout.Tests` (xUnit + Moq) deliberately uses all three kinds of test double, each where it makes sense and not just because "Moq was already being used for everything":
+
+- **Fake** (`EFIdempotencyStoreFakeTests`) — in-memory SQLite as a lightweight, functional replacement for the real database. `EFIdempotencyStore` runs unmodified; what changes is its external dependency. Each simulated "request" uses its own `AppDbContext` (the same Scoped reasoning as in production) — reusing a single one across two "requests" hides the real bug behind a different error (an identity-resolution conflict in the change tracker instead of the business `DbUpdateException`).
+- **Stub** — appears at two distinct layers on purpose, after separating the Command from the Handler: `StubPaymentProvider` (in `ChargeOrderHandlerStubTests`) always returns the same canned response to `ChargeOrderHandler`; `StubChargeOrderHandler` (in `CheckoutControllerTests`) does the same thing one level up, returning a fixed `ChargeOrderResult` to the controller. Neither one verifies how it was called — both exist to isolate the layer that's actually being tested.
+- **Mock** (`ChargeOrderHandlerMockTests`) — Moq verifying interactions a Stub can't prove: that `IPaymentProvider.ChargeAsync` **is never called** when the idempotency reservation fails (`Times.Never`), and that the outbox and the unit of work are invoked exactly once after a successful charge. These checks moved from the controller to the handler along with the logic they test.
+
+(The files `ChargeOrderHandlerStubTests.cs`/`ChargeOrderHandlerMockTests.cs` temporarily keep the physical file names `CheckoutControllerStubTests.cs`/`CheckoutControllerMockTests.cs` on disk — they're pending a rename after the Command+Handler refactor.)
+
+## Next steps (optional)
+
+M6, not implemented: Saga pattern with compensating transaction, for a flow that involves more than one step that could fail partway through and needs to be explicitly undone.

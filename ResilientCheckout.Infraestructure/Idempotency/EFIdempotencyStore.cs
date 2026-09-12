@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using ResilientCheckout.Application.Idempotency;
 using ResilientCheckout.Domain.Idempotency;
 using ResilientCheckout.Infraestructure.Persistence;
@@ -32,7 +32,7 @@ namespace ResilientCheckout.Infraestructure.Idempotency
             }
             catch (DbUpdateException)
             {
-                // Otra request ya reservó esta key primero (violación del unique constraint sobre Key).
+                // Another request already reserved this key first (unique constraint violation on Key).
                 _appDbContext.Entry(record).State = EntityState.Detached;
                 return false;
             }

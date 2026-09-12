@@ -20,8 +20,8 @@ services:
     volumes:
       - "./servicebus-emulator/Config.json:/ServiceBus_Emulator/ConfigFiles/Config.json"
     ports:
-      - "5672:5672"   # AMQP - lo que usa tu app para publicar/consumir mensajes
-      - "5300:5300"   # HTTP - management / health-check del emulador
+      - "5672:5672"   # AMQP - what your app uses to publish/consume messages
+      - "5300:5300"   # HTTP - management / health-check for the emulator
     environment:
       SQL_SERVER: asb-sql
       MSSQL_SA_PASSWORD: "ResilientCheckout_Sb2026!"

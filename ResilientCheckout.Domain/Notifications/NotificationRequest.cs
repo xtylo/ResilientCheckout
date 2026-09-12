@@ -1,9 +1,9 @@
 namespace ResilientCheckout.Domain.Notifications
 {
-    // DTO plano, no persistido -- lo que un canal de notificación necesita para mandar
-    // el mensaje. Vive en Domain (igual que ChargeInstruction) porque tanto la Api
-    // como el proceso separado de Notifications lo referencian, y ninguno de los dos
-    // debe depender del otro.
+    // Plain, non-persisted DTO -- what a notification channel needs to send
+    // the message. It lives in Domain (same as ChargeInstruction) because both the Api
+    // and the separate Notifications process reference it, and neither of them
+    // should depend on the other.
     public class NotificationRequest
     {
         public int OrderId { get; set; }

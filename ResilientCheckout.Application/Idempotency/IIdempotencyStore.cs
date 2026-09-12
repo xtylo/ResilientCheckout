@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -8,10 +8,10 @@ namespace ResilientCheckout.Application.Idempotency
     {
         Task<bool> TryReserveAsync(string key, int orderId, CancellationToken cancellationToken = default);
 
-        // Libera una key reservada cuando la operación NUNCA se completó de verdad
-        // (falla técnica del provider), para permitir un reintento legítimo con la misma key.
-        // No se debe llamar cuando el resultado fue un rechazo de negocio (Succeed = false):
-        // ese sí es un desenlace válido y la key debe seguir consumida.
+        // Releases a reserved key when the operation NEVER truly completed
+        // (a technical failure of the provider), to allow a legitimate retry with the same key.
+        // This must not be called when the outcome was a business rejection (Succeed = false):
+        // that is a valid outcome and the key must stay consumed.
         Task ReleaseAsync(string key, CancellationToken cancellationToken = default);
     }
 }

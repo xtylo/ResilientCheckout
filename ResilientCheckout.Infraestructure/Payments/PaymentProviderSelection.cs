@@ -3,10 +3,10 @@ using System;
 
 namespace ResilientCheckout.Infraestructure.Payments
 {
-    // Singleton -- mismo criterio que PaymentSimulationOptions: el proveedor activo
-    // debe sobrevivir entre requests para poder cambiarlo en caliente (vía
-    // POST /api/simulation/provider/{provider}) sin reiniciar la app. Arranca con el
-    // valor de appsettings ("Payments:Provider"), o Stripe si no se configuró nada.
+    // Singleton -- same reasoning as PaymentSimulationOptions: the active provider
+    // must survive across requests so it can be hot-switched (via
+    // POST /api/simulation/provider/{provider}) without restarting the app. Starts with the
+    // value from appsettings ("Payments:Provider"), or Stripe if nothing was configured.
     public class PaymentProviderSelection
     {
         public PaymentProviderKind Current { get; private set; }

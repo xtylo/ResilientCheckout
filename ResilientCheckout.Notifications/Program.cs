@@ -5,17 +5,17 @@ using ResilientCheckout.Notifications.Channels;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Mismo argumento que en la Api: el ServiceBusClient mantiene la conexión AMQP y está
-// pensado para vivir toda la vida del proceso -> Singleton.
+// Same reasoning as in the Api: the ServiceBusClient keeps the AMQP connection alive and is
+// meant to live for the whole life of the process -> Singleton.
 builder.Services.AddSingleton(sp =>
 {
     var connectionString = builder.Configuration.GetConnectionString("ServiceBus")
-        ?? throw new InvalidOperationException("Falta ConnectionStrings:ServiceBus.");
+        ?? throw new InvalidOperationException("ConnectionStrings:ServiceBus is missing.");
     return new ServiceBusClient(connectionString);
 });
 
-// Los tres canales se registran bajo la MISMA interfaz -- así NotificationDispatcher
-// puede pedir IEnumerable<INotificationChannel> y recibir los tres.
+// The three channels are registered under the SAME interface -- so NotificationDispatcher
+// can request IEnumerable<INotificationChannel> and receive all three.
 builder.Services.AddSingleton<INotificationChannel, EmailChannel>();
 builder.Services.AddSingleton<INotificationChannel, SmsChannel>();
 builder.Services.AddSingleton<INotificationChannel, PushChannel>();

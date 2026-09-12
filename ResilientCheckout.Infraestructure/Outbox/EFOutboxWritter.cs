@@ -11,12 +11,12 @@ namespace ResilientCheckout.Infraestructure.Outbox
 {
     public class EFOutboxWritter : IOutboxWritter
     {
-        // Por defecto, System.Text.Json serializa enums como su valor numérico
-        // subyacente (ej. PaymentProvider.Stripe -> 0). Eso es frágil para un mensaje
-        // que se guarda y se publica hacia afuera (Service Bus, la Subscription
-        // billing-audit): si el día de mañana reordenas o insertas un valor en el enum,
-        // el significado de los eventos ya guardados/publicados cambia en silencio.
-        // Serializar como string hace que el payload sea auto-descriptivo y estable.
+        // By default, System.Text.Json serializes enums as their underlying numeric
+        // value (e.g. PaymentProvider.Stripe -> 0). That's fragile for a message that
+        // gets stored and published outward (Service Bus, the billing-audit
+        // Subscription): if you ever reorder or insert a value in the enum,
+        // the meaning of already-stored/published events changes silently.
+        // Serializing as a string makes the payload self-descriptive and stable.
         private static readonly JsonSerializerOptions SerializerOptions = new()
         {
             Converters = { new JsonStringEnumConverter() }

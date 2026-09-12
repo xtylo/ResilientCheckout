@@ -14,7 +14,7 @@ namespace ResilientCheckout.Notifications.Channels
 
         public Task SendAsync(NotificationRequest request, CancellationToken cancellationToken = default)
         {
-            _logger.LogInformation("[Push] Orden {OrderId}: {Message}", request.OrderId, request.Message);
+            _logger.LogInformation("[Push] Order {OrderId}: {Message}", request.OrderId, request.Message);
             return Task.CompletedTask;
         }
     }

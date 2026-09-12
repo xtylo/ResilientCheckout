@@ -1,8 +1,8 @@
 namespace ResilientCheckout.Domain.Notifications
 {
-    // Strategy: cada medio de envío (email, sms, push...) implementa esto. El
-    // NotificationDispatcher no sabe ni le importa cuántas ni cuáles implementaciones
-    // existen -- eso lo decide la composición en Program.cs del proyecto Notifications.
+    // Strategy: each delivery channel (email, sms, push...) implements this. The
+    // NotificationDispatcher doesn't know or care how many or which implementations
+    // exist -- that's decided by the composition in the Notifications project's Program.cs.
     public interface INotificationChannel
     {
         Task SendAsync(NotificationRequest request, CancellationToken cancellationToken = default);

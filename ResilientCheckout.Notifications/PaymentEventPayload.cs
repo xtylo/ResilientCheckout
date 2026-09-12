@@ -1,9 +1,9 @@
 namespace ResilientCheckout.Notifications
 {
-    // Espejo del payload que ServiceBusPublisher serializa desde el outbox:
+    // Mirror of the payload ServiceBusPublisher serializes from the outbox:
     // new { result.OrderId, result.TransactionId, result.Provider }.
-    // Este worker es el único dueño de este "contrato de mensaje" -- si el payload del
-    // publisher cambia, este es el archivo que hay que actualizar.
+    // This worker is the sole owner of this "message contract" -- if the publisher's
+    // payload changes, this is the file that needs to be updated.
     internal class PaymentEventPayload
     {
         public int OrderId { get; set; }

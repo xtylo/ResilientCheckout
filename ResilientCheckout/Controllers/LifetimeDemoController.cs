@@ -7,15 +7,15 @@ namespace ResilientCheckout.Api.Controllers
     [Route("api/lifetime-demo")]
     public class LifetimeDemoController : ControllerBase
     {
-        // Las tres interfaces resuelven al MISMO OperationService.cs, cada una
-        // registrada bajo un lifetime distinto (ver Program.cs). Pedir cada una DOS
-        // VECES en la misma request -- vía dos parámetros [FromServices] -- es lo que
-        // hace visible la diferencia:
-        //   - Singleton: A y B son el MISMO Guid, siempre (toda la vida de la app).
-        //   - Scoped: A y B son el MISMO Guid DENTRO de esta request, pero cambia en
-        //     cada request nueva (un scope = un request en ASP.NET Core).
-        //   - Transient: A y B son SIEMPRE distintos, incluso dentro de la misma request.
-        // Llama a este endpoint varias veces y compara los valores entre llamadas.
+        // All three interfaces resolve to the SAME OperationService.cs, each one
+        // registered under a different lifetime (see Program.cs). Requesting each one TWICE
+        // within the same request -- via two [FromServices] parameters -- is what
+        // makes the difference visible:
+        //   - Singleton: A and B are the SAME Guid, always (for the whole life of the app).
+        //   - Scoped: A and B are the SAME Guid WITHIN this request, but it changes on
+        //     every new request (one scope = one request in ASP.NET Core).
+        //   - Transient: A and B are ALWAYS different, even within the same request.
+        // Call this endpoint several times and compare the values across calls.
         [HttpGet]
         public IActionResult Get(
             [FromServices] IOperationSingleton singletonA,
@@ -31,19 +31,19 @@ namespace ResilientCheckout.Api.Controllers
                 {
                     A = singletonA.OperationId,
                     B = singletonB.OperationId,
-                    MismaInstanciaEnEstaRequest = singletonA.OperationId == singletonB.OperationId
+                    SameInstanceInThisRequest = singletonA.OperationId == singletonB.OperationId
                 },
                 Scoped = new
                 {
                     A = scopedA.OperationId,
                     B = scopedB.OperationId,
-                    MismaInstanciaEnEstaRequest = scopedA.OperationId == scopedB.OperationId
+                    SameInstanceInThisRequest = scopedA.OperationId == scopedB.OperationId
                 },
                 Transient = new
                 {
                     A = transientA.OperationId,
                     B = transientB.OperationId,
-                    MismaInstanciaEnEstaRequest = transientA.OperationId == transientB.OperationId
+                    SameInstanceInThisRequest = transientA.OperationId == transientB.OperationId
                 }
             });
         }

@@ -1,13 +1,13 @@
-﻿using Azure.Messaging.ServiceBus;
+using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Configuration;
 using ResilientCheckout.Application.Messaging;
 using ResilientCheckout.Domain.Outbox;
 
 namespace ResilientCheckout.Infraestructure.Messaging
 {
-    // Publica al Topic "payment-events". Se registra como Singleton (ver Program.cs):
-    // el ServiceBusSender está pensado para vivir toda la vida de la app, no crearse
-    // por request — igual que el ServiceBusClient del que sale.
+    // Publishes to the "payment-events" Topic. Registered as a Singleton (see Program.cs):
+    // the ServiceBusSender is meant to live for the whole life of the app, not be created
+    // per request -- same as the ServiceBusClient it comes from.
     public class ServiceBusPublisher : IEventPublisher, IAsyncDisposable
     {
         private readonly ServiceBusSender _sender;
@@ -15,7 +15,7 @@ namespace ResilientCheckout.Infraestructure.Messaging
         public ServiceBusPublisher(ServiceBusClient client, IConfiguration configuration)
         {
             var topicName = configuration["ServiceBus:PaymentEventsTopic"]
-                ?? throw new InvalidOperationException("Falta configurar ServiceBus:PaymentEventsTopic.");
+                ?? throw new InvalidOperationException("ServiceBus:PaymentEventsTopic is not configured.");
 
             _sender = client.CreateSender(topicName);
         }

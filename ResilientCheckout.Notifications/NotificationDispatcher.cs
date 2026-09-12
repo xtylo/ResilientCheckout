@@ -3,10 +3,10 @@ using ResilientCheckout.Domain.Notifications;
 
 namespace ResilientCheckout.Notifications
 {
-    // Se inyecta IEnumerable<INotificationChannel> -- el contenedor de DI junta TODAS
-    // las implementaciones registradas para esa interfaz (Email, Sms, Push) en una sola
-    // colección. Así el dispatcher no conoce ninguna implementación concreta y agregar
-    // un canal nuevo mañana es solo una línea más de registro en Program.cs.
+    // IEnumerable<INotificationChannel> is injected -- the DI container gathers ALL
+    // implementations registered for that interface (Email, Sms, Push) into a single
+    // collection. That way the dispatcher doesn't know any concrete implementation and
+    // adding a new channel tomorrow is just one more registration line in Program.cs.
     public class NotificationDispatcher
     {
         private readonly IEnumerable<INotificationChannel> _channels;
@@ -28,9 +28,9 @@ namespace ResilientCheckout.Notifications
                 }
                 catch (Exception ex)
                 {
-                    // Un canal caído (ej. el proveedor de SMS no responde) no debe tumbar
-                    // a los demás -- cada canal se intenta de forma independiente.
-                    _logger.LogWarning(ex, "El canal {Channel} falló al notificar la orden {OrderId}.",
+                    // A channel that's down (e.g. the SMS provider doesn't respond) must not bring
+                    // down the others -- each channel is attempted independently.
+                    _logger.LogWarning(ex, "Channel {Channel} failed to notify order {OrderId}.",
                         channel.GetType().Name, request.OrderId);
                 }
             }
